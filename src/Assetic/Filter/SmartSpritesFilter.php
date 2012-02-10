@@ -76,16 +76,6 @@ class SmartSpritesFilter implements FilterInterface
      */
     public function filterLoad(AssetInterface $asset)
     {
-        $spritefile = $this->getSprite($asset);
-        
-        //write sprite
-        if(is_writable(pathinfo($spritefile,PATHINFO_DIRNAME)) && 
-           strpos($asset->getContent(), '/** sprite:') !== false){
-            $this->write($asset);
-        //sprited variant exists but not writable (mostly from apache if permissions are restrictive)
-        }elseif(is_readable($spritefile)){
-            $asset->setContent(file_get_contents($spritefile));
-        }
     }
     
     /**
@@ -93,18 +83,23 @@ class SmartSpritesFilter implements FilterInterface
      */
     public function filterDump(AssetInterface $asset)
     {
-    }
-    
-    /**
-     * compile a sprited file
-     * 
-     * @param AssetInterface $asset 
-     */
-    protected function write(AssetInterface $asset)
-    {        
+        if (strpos($asset->getContent(), '/** sprite:') === false) {
+          return;
+        }
+
+        // Create input file in the same directory where the asset lives,
+        // so that relative URLs can be resolved properly.
+        $dir= dirname($asset->getSourceRoot().DIRECTORY_SEPARATOR.$asset->getSourcePath());
+        $hash = substr(sha1(time().rand(11111, 99999)), 0, 7);
+        $input = $dir.DIRECTORY_SEPARATOR."tmp-".$hash.'.css';
+        file_put_contents($input, $asset->getContent());
+
+        // We expect SmartSprites to create the output file here:
+        $output = $dir.DIRECTORY_SEPARATOR."tmp-".$hash.'-sprite.css';
+
         $pb = new ProcessBuilder();
         $pb
-            ->inheritEnvironmentVariables()
+            ->setEnv("CLASSPATH", getenv("CLASSPATH"))
             ->setWorkingDirectory($this->path)
             ->add($this->javaPath)
             ->add('-Djava.awt.headless=true')
@@ -142,12 +137,18 @@ class SmartSpritesFilter implements FilterInterface
             $pb->add('--css-file-suffix')->add($this->css_file_suffix);
         }
                 
-        $pb->add('--css-files')->add($asset->getSourceRoot().'/'.$asset->getSourcePath());
-
+        $pb->add('--css-files')->add($input);
         $proc = $pb->getProcess();
         $code = $proc->run();
+        unlink($input);
 
-        if ($code < 0 || strpos($proc->getOutput(), 'ERROR:') !== false) {
+        if ($code != 0) {
+            unlink($output);
+            throw new \RuntimeException($proc->getErrorOutput());
+        }
+
+        if (strpos($proc->getOutput(), 'ERROR:') !== false) {
+            unlink($output);
             throw new \RuntimeException($proc->getOutput());
         }
         
@@ -155,22 +156,9 @@ class SmartSpritesFilter implements FilterInterface
             echo $proc->getOutput();
         }
         
-        $file = $this->getSprite($asset);
-        
-        $asset->setContent(sprintf("/*\n%s*/\n%s",$proc->getOutput(),file_get_contents($file)));
-    }
-    
-    /**
-     * defines the sprited file
-     * 
-     * @param AssetInterface $asset
-     * @return string 
-     */
-    protected function getSprite(AssetInterface $asset)
-    {
-        $filename = substr($asset->getSourcePath(),0, stripos($asset->getSourcePath(), '.')).$this->css_file_suffix.'.css';
-        $file = $asset->getSourceRoot().'/'.$filename;
-                
-        return $file;
-    }
+        $result= file_get_contents($output);
+        unlink($output);
+
+        $asset->setContent(sprintf("/*\n%s*/\n%s",$proc->getOutput(),$result));
+  }
 }
