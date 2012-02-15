@@ -25,10 +25,18 @@ class CoffeeScriptFilter implements FilterInterface
     private $coffeePath;
     private $nodePath;
 
+    // coffee options
+    private $bare;
+
     public function __construct($coffeePath = '/usr/bin/coffee', $nodePath = '/usr/bin/node')
     {
         $this->coffeePath = $coffeePath;
         $this->nodePath = $nodePath;
+    }
+
+    public function setBare($bare)
+    {
+        $this->bare = $bare;
     }
 
     public function filterLoad(AssetInterface $asset)
@@ -36,15 +44,17 @@ class CoffeeScriptFilter implements FilterInterface
         $input = tempnam(sys_get_temp_dir(), 'assetic_coffeescript');
         file_put_contents($input, $asset->getContent());
 
-        $pb = new ProcessBuilder();
-        $pb
-            ->inheritEnvironmentVariables()
-            ->add($this->nodePath)
-            ->add($this->coffeePath)
-            ->add('-cp')
-            ->add($input)
-        ;
+        $pb = new ProcessBuilder(array(
+            $this->nodePath,
+            $this->coffeePath,
+            '-cp',
+        ));
 
+        if ($this->bare) {
+            $pb->add('--bare');
+        }
+
+        $pb->add($input);
         $proc = $pb->getProcess();
         $code = $proc->run();
         unlink($input);

@@ -11,6 +11,7 @@
 
 namespace Assetic\Filter;
 
+use Assetic\Exception\FilterException;
 use Assetic\Asset\AssetInterface;
 use Assetic\Filter\FilterInterface;
 use Assetic\Util\ProcessBuilder;
@@ -45,7 +46,7 @@ class CompassFilter implements FilterInterface
     private $httpPath;
     private $httpImagesPath;
     private $httpJavascriptsPath;
-    
+
     public function __construct($compassPath = '/usr/bin/compass')
     {
         $this->compassPath = $compassPath;
@@ -98,7 +99,7 @@ class CompassFilter implements FilterInterface
     {
         $this->noLineComments = $noLineComments;
     }
-    
+
     public function setImagesDir($imagesDir)
     {
         $this->imagesDir = $imagesDir;
@@ -129,12 +130,12 @@ class CompassFilter implements FilterInterface
     {
         $this->httpPath = $httpPath;
     }
-    
+
     public function setHttpImagesPath($httpImagesPath)
     {
         $this->httpImagesPath = $httpImagesPath;
     }
-    
+
     public function setHttpJavascriptsPath($httpJavascriptsPath)
     {
         $this->httpJavascriptsPath = $httpJavascriptsPath;
@@ -152,13 +153,12 @@ class CompassFilter implements FilterInterface
         // compass does not seems to handle symlink, so we use realpath()
         $tempDir = realpath(sys_get_temp_dir());
 
-        $pb = new ProcessBuilder();
-        $pb
-            ->inheritEnvironmentVariables()
-            ->add($this->compassPath)
-            ->add('compile')
-            ->add($tempDir)
-        ;
+        $pb = new ProcessBuilder(array(
+            $this->compassPath,
+            'compile',
+            $tempDir,
+        ));
+        $pb->inheritEnvironmentVariables();
 
         if ($this->force) {
             $pb->add('--force');
@@ -275,7 +275,7 @@ class CompassFilter implements FilterInterface
                 unlink($configFile);
             }
 
-            throw new \RuntimeException($proc->getErrorOutput() ?: $proc->getOutput());
+            throw FilterException::fromProcess($proc)->setInput($asset->getContent());
         }
 
         $asset->setContent(file_get_contents($output));

@@ -18,13 +18,24 @@ namespace Assetic\Util;
  */
 class ProcessBuilder
 {
-    private $arguments = array();
+    private static $isWindows;
+
+    private $arguments;
     private $cwd;
     private $env;
     private $stdin;
     private $timeout = 60;
     private $options = array();
     private $inheritEnv = false;
+
+    public function __construct(array $arguments = array())
+    {
+        $this->arguments = $arguments;
+
+        if (null === self::$isWindows) {
+            self::$isWindows = defined('PHP_WINDOWS_VERSION_MAJOR');
+        }
+    }
 
     /**
      * Adds an unescaped argument to the command string.
@@ -92,7 +103,7 @@ class ProcessBuilder
 
         $options = $this->options;
 
-        if (defined('PHP_WINDOWS_MAJOR_VERSION')) {
+        if (self::$isWindows) {
             $options += array('bypass_shell' => true);
 
             $args = $this->arguments;
@@ -100,13 +111,16 @@ class ProcessBuilder
 
             $script = '"'.$cmd.'"';
             if ($args) {
-                $script .= ' '.implode(' ', array_map('escapeshellarg', $parts));
+                $script .= ' '.implode(' ', array_map('escapeshellarg', $args));
             }
+
+            $script = 'cmd /V:ON /E:ON /C "'.$script.'"';
         } else {
             $script = implode(' ', array_map('escapeshellarg', $this->arguments));
         }
-        $env = $this->inheritEnv ? ($this->env ?: array()) + $_ENV : $this->env;
+        $env = $this->inheritEnv && $_ENV ? ($this->env ?: array()) + $_ENV : $this->env;
 
         return new Process($script, $this->cwd, $env, $this->stdin, $this->timeout, $options);
     }
 }
+
